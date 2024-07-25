@@ -13,9 +13,8 @@ import {useSnackbar} from 'notistack';
 import {RoomUser} from './message';
 import {useSettings, VideoDisplayMode} from './settings';
 import {SettingDialog} from './SettingDialog';
-import VolumeUpIcon from '@material-ui/icons/VolumeUp';
-import VolumeMuteIcon from '@material-ui/icons/VolumeMute';
-
+import VolumeUpIcon from '@mui/icons-material/VolumeUp';
+import VolumeMuteIcon from '@mui/icons-material/VolumeMute';
 
 const HostStream: unique symbol = Symbol('mystream');
 
@@ -260,7 +259,8 @@ export const Room = ({
                                     video.muted = !video.muted;
                                 }
                             }}
-                            disabled={!selectedStream || !!state.hostStream}>
+                            disabled={!selectedStream || !!state.hostStream}
+                        >
                             {videoElement?.muted ? (
                                 <VolumeMuteIcon fontSize="large" />
                             ) : (
