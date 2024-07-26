@@ -15,6 +15,8 @@ import {useSettings, VideoDisplayMode} from './settings';
 import {SettingDialog} from './SettingDialog';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeMuteIcon from '@mui/icons-material/VolumeMute';
+import Mic from '@mui/icons-material/Mic';
+import MicOff from '@mui/icons-material/MicOff';
 import {Key} from 'ts-key-enum';
 
 const HostStream: unique symbol = Symbol('mystream');
@@ -59,11 +61,13 @@ export const Room = ({
     share,
     stopShare,
     setName,
+    toggleMicrophone,
 }: {
     state: ConnectedRoom;
     share: () => void;
     stopShare: () => void;
     setName: (name: string) => void;
+    toggleMicrophone: () => void;
 }) => {
     const classes = useStyles();
     const [open, setOpen] = useState(false);
@@ -75,6 +79,7 @@ export const Room = ({
     const videoElementRef = useRef<FullScreenHTMLVideoElement | null>(null);
     const [isMuted, setIsMuted] = useState<{[key: string]: boolean}>({});
     const [volumes, setVolumes] = useState<{[key: string]: number}>({});
+    const [isMicrophoneOn, setIsMicrophoneOn] = useState(false);
 
     useShowOnMouseMovement(setShowControl);
 
@@ -462,6 +467,23 @@ export const Room = ({
                                     <VolumeMuteIcon fontSize="large" />
                                 ) : (
                                     <VolumeUpIcon fontSize="large" />
+                                )}
+                            </IconButton>
+                        </span>
+                    </Tooltip>
+                    <Tooltip title="Microphone" arrow>
+                        <span>
+                            <IconButton
+                                onClick={() => {
+                                    toggleMicrophone();
+                                    setIsMicrophoneOn((prev) => !prev);
+                                }}
+                                size="large"
+                            >
+                                {isMicrophoneOn ? (
+                                    <Mic fontSize="large" />
+                                ) : (
+                                    <MicOff fontSize="large" />
                                 )}
                             </IconButton>
                         </span>

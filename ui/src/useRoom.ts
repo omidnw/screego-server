@@ -20,6 +20,7 @@ export type ConnectedRoom = {
     ws: WebSocket;
     hostStream?: MediaStream;
     clientStreams: ClientStream[];
+    microphoneStream?: MediaStream;
 } & RoomInfo;
 
 interface ClientStream {
@@ -34,6 +35,7 @@ export interface UseRoom {
     share: () => void;
     setName: (name: string) => void;
     stopShare: () => void;
+    toggleMicrophone: () => void;
 }
 
 const relayConfig: Partial<RTCConfiguration> =
@@ -163,6 +165,7 @@ export const useRoom = (config: UIConfig): UseRoom => {
     const host = React.useRef<Record<string, RTCPeerConnection>>({});
     const client = React.useRef<Record<string, RTCPeerConnection>>({});
     const stream = React.useRef<MediaStream>();
+    const microphoneStream = React.useRef<MediaStream>();
 
     const [state, setState] = React.useState<RoomState>(false);
 
@@ -339,79 +342,17 @@ export const useRoom = (config: UIConfig): UseRoom => {
             );
             return;
         }
-
-        const shareOption = prompt(
-            'Choose sharing option:\n1. Share screen (without audio)\n2. Share screen (with audio)\n3. Share screen (without audio) with microphone\n4. Share screen (with audio) with microphone\n5. Share microphone only',
-            '1'
-        );
-
-        let displayMediaConfig: DisplayMediaStreamOptions = {
+        stream.current = await navigator.mediaDevices.getDisplayMedia({
             video: {frameRate: loadSettings().framerate},
-            audio: false,
-        };
-        let userMediaConfig: MediaStreamConstraints = {audio: false};
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+            },
+        });
+        stream.current?.getVideoTracks()[0].addEventListener('ended', () => stopShare());
+        setState((current) => (current ? {...current, hostStream: stream.current} : current));
 
-        switch (shareOption) {
-            case '1':
-                displayMediaConfig.audio = false;
-                break;
-            case '2':
-                displayMediaConfig.audio = true;
-                break;
-            case '3':
-                displayMediaConfig.audio = false;
-                userMediaConfig.audio = {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                };
-                break;
-            case '4':
-                displayMediaConfig.audio = true;
-                userMediaConfig.audio = {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                };
-                break;
-            case '5':
-                userMediaConfig.audio = {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                };
-                break;
-            default:
-                enqueueSnackbar('Invalid option selected', {variant: 'error'});
-                return;
-        }
-
-        try {
-            if (shareOption === '5') {
-                stream.current = await navigator.mediaDevices.getUserMedia(userMediaConfig);
-            } else {
-                const screenStream =
-                    await navigator.mediaDevices.getDisplayMedia(displayMediaConfig);
-
-                if (shareOption === '3' || shareOption === '4') {
-                    const audioStream = await navigator.mediaDevices.getUserMedia(userMediaConfig);
-                    stream.current = new MediaStream([
-                        ...screenStream.getTracks(),
-                        ...audioStream.getAudioTracks(),
-                    ]);
-                } else {
-                    stream.current = screenStream;
-                }
-            }
-
-            stream.current?.getTracks().forEach((track) => {
-                track.addEventListener('ended', () => stopShare());
-            });
-
-            setState((current) => (current ? {...current, hostStream: stream.current} : current));
-
-            conn.current?.send(JSON.stringify({type: 'share', payload: {}}));
-        } catch (err: any) {
-            console.error('Error sharing media:', err);
-            enqueueSnackbar('Error sharing media: ' + err.message, {variant: 'error'});
-        }
+        conn.current?.send(JSON.stringify({type: 'share', payload: {}}));
     };
 
     const stopShare = async () => {
@@ -427,6 +368,51 @@ export const useRoom = (config: UIConfig): UseRoom => {
 
     const setName = (name: string): void => {
         conn.current?.send(JSON.stringify({type: 'name', payload: {username: name}}));
+    };
+
+    const toggleMicrophone = async () => {
+        if (!navigator.mediaDevices) {
+            enqueueSnackbar(
+                'Could not access microphone. (mediaDevices undefined) Are you using https?',
+                {
+                    variant: 'error',
+                    persist: true,
+                }
+            );
+            return;
+        }
+
+        try {
+            if (microphoneStream.current) {
+                microphoneStream.current.getAudioTracks().forEach((track) => track.stop());
+                microphoneStream.current = undefined;
+                setState((current) =>
+                    current ? {...current, microphoneStream: undefined} : current
+                );
+            } else {
+                microphoneStream.current = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                    },
+                });
+                microphoneStream.current?.getTracks().forEach((track) => {
+                    track.addEventListener('ended', () => {
+                        microphoneStream.current = undefined;
+                        setState((current) =>
+                            current ? {...current, microphoneStream: undefined} : current
+                        );
+                    });
+                });
+
+                setState((current) =>
+                    current ? {...current, microphoneStream: microphoneStream.current} : current
+                );
+            }
+        } catch (err: any) {
+            console.error('Error accessing microphone:', err);
+            enqueueSnackbar('Error accessing microphone: ' + err.message, {variant: 'error'});
+        }
     };
 
     React.useEffect(() => {
@@ -454,5 +440,5 @@ export const useRoom = (config: UIConfig): UseRoom => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return {state, room, share, stopShare, setName};
+    return {state, room, share, stopShare, setName, toggleMicrophone};
 };
