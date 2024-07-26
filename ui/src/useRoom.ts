@@ -396,8 +396,6 @@ export const useRoom = (config: UIConfig): UseRoom => {
                         ...screenStream.getTracks(),
                         ...audioStream.getAudioTracks(),
                     ]);
-                    console.log("selected!");
-                    
                 } else {
                     stream.current = screenStream;
                 }
