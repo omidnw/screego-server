@@ -293,7 +293,7 @@ export const Room = ({
         []
     );
 
-    const handleVolumeChange = (event: Event, newValue: number | number[]) => {
+    const handleVolumeChange = (_event: Event, newValue: number | number[]) => {
         if (
             selectedStream &&
             !(state.users.find(({you}) => you === true)?.id === selectedStream.toString())
