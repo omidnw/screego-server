@@ -1,4 +1,4 @@
-import React, {useCallback, useState, useEffect, useMemo} from 'react';
+import React, {useCallback, useState, useEffect, useMemo, useRef} from 'react';
 import {Badge, IconButton, Paper, Slider, Theme, Tooltip, Typography} from '@mui/material';
 import CancelPresentationIcon from '@mui/icons-material/CancelPresentation';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
@@ -72,13 +72,13 @@ export const Room = ({
     const [showControl, setShowControl] = useState(true);
     const [hoverControl, setHoverControl] = useState(false);
     const [selectedStream, setSelectedStream] = useState<string | typeof HostStream>();
-    const [videoElement, setVideoElement] = useState<FullScreenHTMLVideoElement | null>(null);
+    const videoElementRef = useRef<FullScreenHTMLVideoElement | null>(null);
     const [isMuted, setIsMuted] = useState<{[key: string]: boolean}>({});
     const [volumes, setVolumes] = useState<{[key: string]: number}>({});
 
     useShowOnMouseMovement(setShowControl);
 
-    const handleFullscreen = useCallback(() => requestFullscreen(videoElement), [videoElement]);
+    const handleFullscreen = useCallback(() => requestFullscreen(videoElementRef.current), []);
 
     useEffect(() => {
         if (selectedStream === HostStream && state.hostStream) {
@@ -100,13 +100,24 @@ export const Room = ({
             : state.clientStreams.find(({id}) => selectedStream === id)?.stream;
 
     useEffect(() => {
-        if (videoElement && stream) {
-            videoElement.srcObject = stream;
-            videoElement.play().catch((e) => console.log('Could not play main video', e));
-            videoElement.muted = isMuted[selectedStream as string] || true;
-            videoElement.volume = volumes[selectedStream as string] / 100 || 1;
+        if (videoElementRef.current && stream) {
+            videoElementRef.current.srcObject = stream;
+            videoElementRef.current
+                .play()
+                .catch((e) => console.log('Could not play main video', e));
         }
-    }, [videoElement, stream, isMuted, volumes, selectedStream]);
+    }, [stream]);
+
+    const updateVideoProperties = useCallback(() => {
+        if (videoElementRef.current) {
+            videoElementRef.current.muted = isMuted[selectedStream as string] || false;
+            videoElementRef.current.volume = (volumes[selectedStream as string] ?? 100) / 100;
+        }
+    }, [isMuted, volumes, selectedStream]);
+
+    useEffect(() => {
+        updateVideoProperties();
+    }, [updateVideoProperties]);
 
     useEffect(() => {
         if (state.hostStream) {
@@ -198,10 +209,16 @@ export const Room = ({
                     selectedStream?.toString() === 'Symbol(mystream)'
                 )
             ) {
-                setIsMuted((prevMuted) => ({
-                    ...prevMuted,
-                    [selectedStream as string]: !prevMuted[selectedStream as string],
-                }));
+                setIsMuted((prevMuted) => {
+                    const newMuted = !prevMuted[selectedStream as string];
+                    if (videoElementRef.current) {
+                        videoElementRef.current.muted = newMuted;
+                    }
+                    return {
+                        ...prevMuted,
+                        [selectedStream as string]: newMuted,
+                    };
+                });
             }
         },
         [selectedStream, state.users]
@@ -217,13 +234,19 @@ export const Room = ({
                     selectedStream?.toString() === 'Symbol(mystream)'
                 )
             ) {
-                setVolumes((prevVolumes) => ({
-                    ...prevVolumes,
-                    [selectedStream as string]: Math.min(
-                        (prevVolumes[selectedStream as string] || 100) + 1,
+                setVolumes((prevVolumes) => {
+                    const newVolume = Math.min(
+                        (prevVolumes[selectedStream as string] ?? 100) + 1,
                         100
-                    ),
-                }));
+                    );
+                    if (videoElementRef.current) {
+                        videoElementRef.current.volume = newVolume / 100;
+                    }
+                    return {
+                        ...prevVolumes,
+                        [selectedStream as string]: newVolume,
+                    };
+                });
             }
         },
         [selectedStream, state.users]
@@ -239,13 +262,19 @@ export const Room = ({
                     selectedStream?.toString() === 'Symbol(mystream)'
                 )
             ) {
-                setVolumes((prevVolumes) => ({
-                    ...prevVolumes,
-                    [selectedStream as string]: Math.max(
-                        (prevVolumes[selectedStream as string] || 100) - 1,
+                setVolumes((prevVolumes) => {
+                    const newVolume = Math.max(
+                        (prevVolumes[selectedStream as string] ?? 100) - 1,
                         0
-                    ),
-                }));
+                    );
+                    if (videoElementRef.current) {
+                        videoElementRef.current.volume = newVolume / 100;
+                    }
+                    return {
+                        ...prevVolumes,
+                        [selectedStream as string]: newVolume,
+                    };
+                });
             }
         },
         [selectedStream, state.users]
@@ -264,9 +293,13 @@ export const Room = ({
             selectedStream &&
             !(state.users.find(({you}) => you === true)?.id === selectedStream.toString())
         ) {
+            const volume = newValue as number;
+            if (videoElementRef.current) {
+                videoElementRef.current.volume = volume / 100;
+            }
             setVolumes((prevVolumes) => ({
                 ...prevVolumes,
-                [selectedStream as string]: newValue as number,
+                [selectedStream as string]: volume,
             }));
         }
     };
@@ -316,8 +349,8 @@ export const Room = ({
 
             {stream ? (
                 <video
-                    muted={isMuted[selectedStream as string] || true}
-                    ref={setVideoElement}
+                    muted={isMuted[selectedStream as string] || false}
+                    ref={videoElementRef}
                     className={videoClasses()}
                     onDoubleClick={handleFullscreen}
                 />
@@ -409,10 +442,13 @@ export const Room = ({
                                             selectedStream.toString()
                                         )
                                     ) {
+                                        const newMuted = !isMuted[selectedStream as string];
+                                        if (videoElementRef.current) {
+                                            videoElementRef.current.muted = newMuted;
+                                        }
                                         setIsMuted((prevMuted) => ({
                                             ...prevMuted,
-                                            [selectedStream as string]:
-                                                !prevMuted[selectedStream as string],
+                                            [selectedStream as string]: newMuted,
                                         }));
                                     }
                                 }}
@@ -433,7 +469,7 @@ export const Room = ({
                     <Tooltip title="Volume" arrow>
                         <div className={classes.volumeSlider}>
                             <Slider
-                                value={volumes[selectedStream as string] || 100}
+                                value={volumes[selectedStream as string] ?? 100}
                                 onChange={handleVolumeChange}
                                 aria-labelledby="continuous-slider"
                                 step={1}
@@ -444,7 +480,7 @@ export const Room = ({
                                     state.users.find(({you}) => you === true)?.you
                                 }
                             />
-                            <span>{`volume: ${volumes[selectedStream as string] || 100}`}</span>
+                            <span>{`volume: ${volumes[selectedStream as string] ?? 100}`}</span>
                         </div>
                     </Tooltip>
                 </Paper>
@@ -582,17 +618,15 @@ const useStyles = makeStyles((theme: Theme) => ({
         minHeight: '100%',
         width: 'auto',
         maxWidth: '300px',
-
         maxHeight: '200px',
     },
     videoWindowFit: {
         width: '100%',
         height: '100%',
-
         position: 'absolute',
         top: '50%',
         left: '50%',
-        transform: 'translate(-50%,-50%)',
+        transform: 'translate(-50%, -50%)',
     },
     videoWindowWidth: {
         height: 'auto',
@@ -625,7 +659,6 @@ const useStyles = makeStyles((theme: Theme) => ({
         bottom: 0,
         width: '100%',
         height: '100%',
-
         overflow: 'auto',
     },
     volumeSlider: {
