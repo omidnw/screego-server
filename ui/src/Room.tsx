@@ -1,4 +1,4 @@
-import React, {useCallback} from 'react';
+import React, {useCallback, useState, useEffect, useMemo} from 'react';
 import {Badge, IconButton, Paper, Slider, Theme, Tooltip, Typography} from '@mui/material';
 import CancelPresentationIcon from '@mui/icons-material/CancelPresentation';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
@@ -65,21 +65,21 @@ export const Room = ({
     setName: (name: string) => void;
 }) => {
     const classes = useStyles();
-    const [open, setOpen] = React.useState(false);
+    const [open, setOpen] = useState(false);
     const {enqueueSnackbar} = useSnackbar();
     const [settings, setSettings] = useSettings();
-    const [showControl, setShowControl] = React.useState(true);
-    const [hoverControl, setHoverControl] = React.useState(false);
-    const [selectedStream, setSelectedStream] = React.useState<string | typeof HostStream>();
-    const [videoElement, setVideoElement] = React.useState<FullScreenHTMLVideoElement | null>(null);
-    const [isMuted, setIsMuted] = React.useState(true);
-    const [volume, setVolume] = React.useState(100);
+    const [showControl, setShowControl] = useState(true);
+    const [hoverControl, setHoverControl] = useState(false);
+    const [selectedStream, setSelectedStream] = useState<string | typeof HostStream>();
+    const [videoElement, setVideoElement] = useState<FullScreenHTMLVideoElement | null>(null);
+    const [isMuted, setIsMuted] = useState<{[key: string]: boolean}>({});
+    const [volumes, setVolumes] = useState<{[key: string]: number}>({});
 
     useShowOnMouseMovement(setShowControl);
 
     const handleFullscreen = useCallback(() => requestFullscreen(videoElement), [videoElement]);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (selectedStream === HostStream && state.hostStream) {
             return;
         }
@@ -98,14 +98,23 @@ export const Room = ({
             ? state.hostStream
             : state.clientStreams.find(({id}) => selectedStream === id)?.stream;
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (videoElement && stream) {
             videoElement.srcObject = stream;
             videoElement.play().catch((e) => console.log('Could not play main video', e));
-            videoElement.muted = isMuted;
-            videoElement.volume = volume / 100;
+            videoElement.muted = isMuted[selectedStream as string] || false;
+            videoElement.volume = volumes[selectedStream as string] / 100 || 1;
         }
-    }, [videoElement, stream, isMuted, volume]);
+    }, [videoElement, stream, isMuted, volumes, selectedStream]);
+
+    useEffect(() => {
+        if (state.hostStream) {
+            setIsMuted((prevMuted) => ({
+                ...prevMuted,
+                [HostStream.toString()]: true,
+            }));
+        }
+    }, [state.hostStream]);
 
     const copyLink = () => {
         navigator?.clipboard?.writeText(window.location.href)?.then(
@@ -114,7 +123,7 @@ export const Room = ({
         );
     };
 
-    const setHoverState = React.useMemo(
+    const setHoverState = useMemo(
         () => ({
             onMouseLeave: () => setHoverControl(false),
             onMouseEnter: () => setHoverControl(true),
@@ -124,7 +133,14 @@ export const Room = ({
 
     const controlVisible = showControl || open || hoverControl;
 
-    useHotkeys('s', () => (state.hostStream ? stopShare() : share()), [state.hostStream]);
+    useHotkeys(
+        's',
+        () => {
+            state.hostStream ? stopShare() : share();
+        },
+        [state.hostStream]
+    );
+
     useHotkeys(
         'f',
         () => {
@@ -134,7 +150,9 @@ export const Room = ({
         },
         [handleFullscreen, selectedStream]
     );
+
     useHotkeys('c', copyLink);
+
     useHotkeys(
         'h',
         () => {
@@ -151,6 +169,7 @@ export const Room = ({
         },
         [state.clientStreams, selectedStream]
     );
+
     useHotkeys(
         'l',
         () => {
@@ -167,31 +186,52 @@ export const Room = ({
         },
         [state.clientStreams, selectedStream]
     );
+
     useHotkeys(
         'm',
         () => {
-            setIsMuted(!isMuted);
-        },
-        [isMuted]
-    );
-    useHotkeys(
-        '+',
-        () => {
-            if (stream) {
-                setVolume((prevVolume) => Math.min(prevVolume + 10, 100));
+            if (selectedStream && !state.users.find(({id}) => id === selectedStream)?.you) {
+                setIsMuted((prevMuted) => ({
+                    ...prevMuted,
+                    [selectedStream as string]: !prevMuted[selectedStream as string],
+                }));
             }
         },
-        [stream]
+        [selectedStream, state.users]
     );
+
+    useHotkeys(
+        '=',
+        () => {
+            if (selectedStream && !state.users.find(({id}) => id === selectedStream)?.you) {
+                setVolumes((prevVolumes) => ({
+                    ...prevVolumes,
+                    [selectedStream as string]: Math.min(
+                        (prevVolumes[selectedStream as string] || 100) + 1,
+                        100
+                    ),
+                }));
+            }
+        },
+        [selectedStream, state.users]
+    );
+
     useHotkeys(
         '-',
         () => {
-            if (stream) {
-                setVolume((prevVolume) => Math.max(prevVolume - 10, 0));
+            if (selectedStream && !state.users.find(({id}) => id === selectedStream)?.you) {
+                setVolumes((prevVolumes) => ({
+                    ...prevVolumes,
+                    [selectedStream as string]: Math.max(
+                        (prevVolumes[selectedStream as string] || 100) - 1,
+                        0
+                    ),
+                }));
             }
         },
-        [stream]
+        [selectedStream, state.users]
     );
+
     useHotkeys(
         'ctrl+s',
         () => {
@@ -201,8 +241,12 @@ export const Room = ({
     );
 
     const handleVolumeChange = (event: Event, newValue: number | number[]) => {
-        event.preventDefault();
-        setVolume(newValue as number);
+        if (selectedStream && !state.users.find(({id}) => id === selectedStream)?.you) {
+            setVolumes((prevVolumes) => ({
+                ...prevVolumes,
+                [selectedStream as string]: newValue as number,
+            }));
+        }
     };
 
     const videoClasses = () => {
@@ -215,6 +259,12 @@ export const Room = ({
                 return `${classes.video} ${classes.videoWindowWidth}`;
             case VideoDisplayMode.FitHeight:
                 return `${classes.video} ${classes.videoWindowHeight}`;
+        }
+    };
+
+    const handleStreamSelection = (streamId: string | typeof HostStream) => {
+        if (!state.users.find(({id}) => id === streamId)?.you) {
+            setSelectedStream(streamId);
         }
     };
 
@@ -237,9 +287,10 @@ export const Room = ({
 
             {stream ? (
                 <video
-                    muted={isMuted}
+                    muted={isMuted[selectedStream as string] || false}
                     ref={setVideoElement}
                     className={videoClasses()}
+                    data-stream-id={selectedStream}
                     onDoubleClick={handleFullscreen}
                 />
             ) : (
@@ -262,15 +313,19 @@ export const Room = ({
                 <Paper className={classes.control} elevation={10} {...setHoverState}>
                     {state.hostStream ? (
                         <Tooltip title="Cancel Presentation" arrow>
-                            <IconButton onClick={stopShare} size="large">
-                                <CancelPresentationIcon fontSize="large" />
-                            </IconButton>
+                            <span>
+                                <IconButton onClick={stopShare} size="large">
+                                    <CancelPresentationIcon fontSize="large" />
+                                </IconButton>
+                            </span>
                         </Tooltip>
                     ) : (
                         <Tooltip title="Start Presentation" arrow>
-                            <IconButton onClick={share} size="large">
-                                <PresentToAllIcon fontSize="large" />
-                            </IconButton>
+                            <span>
+                                <IconButton onClick={share} size="large">
+                                    <PresentToAllIcon fontSize="large" />
+                                </IconButton>
+                            </span>
                         </Tooltip>
                     )}
 
@@ -293,42 +348,64 @@ export const Room = ({
                         </Badge>
                     </Tooltip>
                     <Tooltip title="Sound" arrow>
-                        <IconButton
-                            onClick={() => {
-                                setIsMuted(!isMuted);
-                            }}
-                            disabled={!selectedStream || !!state.hostStream}
-                        >
-                            {isMuted ? (
-                                <VolumeMuteIcon fontSize="large" />
-                            ) : (
-                                <VolumeUpIcon fontSize="large" />
-                            )}
-                        </IconButton>
+                        <span>
+                            <IconButton
+                                onClick={() => {
+                                    if (
+                                        selectedStream &&
+                                        !state.users.find(({id}) => id === selectedStream)?.you
+                                    ) {
+                                        setIsMuted((prevMuted) => ({
+                                            ...prevMuted,
+                                            [selectedStream as string]:
+                                                !prevMuted[selectedStream as string],
+                                        }));
+                                    }
+                                }}
+                                disabled={
+                                    !selectedStream ||
+                                    state.users.find(({id}) => id === selectedStream)?.you
+                                }
+                            >
+                                {isMuted[selectedStream as string] ? (
+                                    <VolumeMuteIcon fontSize="large" />
+                                ) : (
+                                    <VolumeUpIcon fontSize="large" />
+                                )}
+                            </IconButton>
+                        </span>
                     </Tooltip>
                     <Tooltip title="Volume" arrow>
                         <div className={classes.volumeSlider}>
                             <Slider
-                                value={volume}
+                                value={volumes[selectedStream as string] || 100}
                                 onChange={handleVolumeChange}
                                 aria-labelledby="continuous-slider"
+                                step={1}
+                                min={0}
+                                max={100}
+                                disabled={state.users.find(({id}) => id === selectedStream)?.you}
                             />
                         </div>
                     </Tooltip>
                     <Tooltip title="Fullscreen" arrow>
-                        <IconButton
-                            onClick={() => handleFullscreen()}
-                            disabled={!selectedStream}
-                            size="large"
-                        >
-                            <FullScreenIcon fontSize="large" />
-                        </IconButton>
+                        <span>
+                            <IconButton
+                                onClick={() => handleFullscreen()}
+                                disabled={!selectedStream}
+                                size="large"
+                            >
+                                <FullScreenIcon fontSize="large" />
+                            </IconButton>
+                        </span>
                     </Tooltip>
 
                     <Tooltip title="Settings" arrow>
-                        <IconButton onClick={() => setOpen(true)} size="large">
-                            <SettingsIcon fontSize="large" />
-                        </IconButton>
+                        <span>
+                            <IconButton onClick={() => setOpen(true)} size="large">
+                                <SettingsIcon fontSize="large" />
+                            </IconButton>
+                        </span>
                     </Tooltip>
                 </Paper>
             )}
@@ -342,12 +419,13 @@ export const Room = ({
                                 key={client.id}
                                 elevation={4}
                                 className={classes.smallVideoContainer}
-                                onClick={() => setSelectedStream(client.id)}
+                                onClick={() => handleStreamSelection(client.id)}
                             >
                                 <Video
                                     key={client.id}
                                     src={client.stream}
                                     className={classes.smallVideo}
+                                    data-stream-id={client.id}
                                 />
                                 <Typography
                                     variant="subtitle1"
@@ -361,13 +439,13 @@ export const Room = ({
                             </Paper>
                         );
                     })}
-                {state.hostStream && selectedStream !== HostStream && (
-                    <Paper
-                        elevation={4}
-                        className={classes.smallVideoContainer}
-                        onClick={() => setSelectedStream(HostStream)}
-                    >
-                        <Video src={state.hostStream} className={classes.smallVideo} />
+                {state.hostStream && (
+                    <Paper elevation={4} className={classes.smallVideoContainer}>
+                        <Video
+                            src={state.hostStream}
+                            className={classes.smallVideo}
+                            data-stream-id={HostStream.toString()}
+                        />
                         <Typography
                             variant="subtitle1"
                             component="div"
@@ -414,7 +492,6 @@ const useShowOnMouseMovement = (doShow: (s: boolean) => void) => {
                 timeoutHandle.current = 0;
                 doShow(false);
             }, 1000)),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
         []
     );
 };
