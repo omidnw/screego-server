@@ -72,6 +72,7 @@ export const Room = ({
     const [hoverControl, setHoverControl] = React.useState(false);
     const [selectedStream, setSelectedStream] = React.useState<string | typeof HostStream>();
     const [videoElement, setVideoElement] = React.useState<FullScreenHTMLVideoElement | null>(null);
+    const [isMuted, setIsMuted] = React.useState(true);
 
     useShowOnMouseMovement(setShowControl);
 
@@ -100,8 +101,9 @@ export const Room = ({
         if (videoElement && stream) {
             videoElement.srcObject = stream;
             videoElement.play().catch((e) => console.log('Could not play main video', e));
+            videoElement.muted = isMuted;
         }
-    }, [videoElement, stream]);
+    }, [videoElement, stream, isMuted]);
 
     const copyLink = () => {
         navigator?.clipboard?.writeText(window.location.href)?.then(
@@ -196,7 +198,7 @@ export const Room = ({
 
             {stream ? (
                 <video
-                    muted
+                    muted={isMuted}
                     ref={setVideoElement}
                     className={videoClasses()}
                     onDoubleClick={handleFullscreen}
@@ -254,14 +256,11 @@ export const Room = ({
                     <Tooltip title="Sound" arrow>
                         <IconButton
                             onClick={() => {
-                                const video = videoElement as HTMLMediaElement;
-                                if (video) {
-                                    video.muted = !video.muted;
-                                }
+                                setIsMuted(!isMuted);
                             }}
                             disabled={!selectedStream || !!state.hostStream}
                         >
-                            {videoElement?.muted ? (
+                            {isMuted ? (
                                 <VolumeMuteIcon fontSize="large" />
                             ) : (
                                 <VolumeUpIcon fontSize="large" />

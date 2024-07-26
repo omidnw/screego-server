@@ -317,6 +317,18 @@ export const useRoom = (config: UIConfig): UseRoom => {
     );
 
     const share = async () => {
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
+        if (isSafari) {
+            enqueueSnackbar(
+                'Screen sharing with audio is not fully supported in Safari. Some features may not work as expected.',
+                {
+                    variant: 'warning',
+                    persist: true,
+                }
+            );
+        }
+
         if (!navigator.mediaDevices) {
             enqueueSnackbar(
                 'Could not start presentation. (mediaDevices undefined) Are you using https?',
