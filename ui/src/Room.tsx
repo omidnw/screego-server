@@ -15,6 +15,7 @@ import {useSettings, VideoDisplayMode} from './settings';
 import {SettingDialog} from './SettingDialog';
 import VolumeUpIcon from '@mui/icons-material/VolumeUp';
 import VolumeMuteIcon from '@mui/icons-material/VolumeMute';
+import {Key} from 'ts-key-enum';
 
 const HostStream: unique symbol = Symbol('mystream');
 
@@ -102,7 +103,7 @@ export const Room = ({
         if (videoElement && stream) {
             videoElement.srcObject = stream;
             videoElement.play().catch((e) => console.log('Could not play main video', e));
-            videoElement.muted = isMuted[selectedStream as string] || false;
+            videoElement.muted = isMuted[selectedStream as string] || true;
             videoElement.volume = volumes[selectedStream as string] / 100 || 1;
         }
     }, [videoElement, stream, isMuted, volumes, selectedStream]);
@@ -154,7 +155,7 @@ export const Room = ({
     useHotkeys('c', copyLink);
 
     useHotkeys(
-        'h',
+        ['h', Key.ArrowLeft],
         () => {
             if (state.clientStreams !== undefined && state.clientStreams.length > 0) {
                 const currentStreamIndex = state.clientStreams.findIndex(
@@ -171,7 +172,7 @@ export const Room = ({
     );
 
     useHotkeys(
-        'l',
+        ['l', Key.ArrowRight],
         () => {
             if (state.clientStreams !== undefined && state.clientStreams.length > 0) {
                 const currentStreamIndex = state.clientStreams.findIndex(
@@ -190,7 +191,13 @@ export const Room = ({
     useHotkeys(
         'm',
         () => {
-            if (selectedStream && !state.users.find(({id}) => id === selectedStream)?.you) {
+            if (
+                selectedStream &&
+                !(
+                    state.users.find(({you}) => you === true)?.you &&
+                    selectedStream?.toString() === 'Symbol(mystream)'
+                )
+            ) {
                 setIsMuted((prevMuted) => ({
                     ...prevMuted,
                     [selectedStream as string]: !prevMuted[selectedStream as string],
@@ -201,9 +208,15 @@ export const Room = ({
     );
 
     useHotkeys(
-        '=',
+        [Key.ArrowUp],
         () => {
-            if (selectedStream && !state.users.find(({id}) => id === selectedStream)?.you) {
+            if (
+                selectedStream &&
+                !(
+                    state.users.find(({you}) => you === true)?.you &&
+                    selectedStream?.toString() === 'Symbol(mystream)'
+                )
+            ) {
                 setVolumes((prevVolumes) => ({
                     ...prevVolumes,
                     [selectedStream as string]: Math.min(
@@ -217,9 +230,15 @@ export const Room = ({
     );
 
     useHotkeys(
-        '-',
+        [Key.ArrowDown],
         () => {
-            if (selectedStream && !state.users.find(({id}) => id === selectedStream)?.you) {
+            if (
+                selectedStream &&
+                !(
+                    state.users.find(({you}) => you === true)?.you &&
+                    selectedStream?.toString() === 'Symbol(mystream)'
+                )
+            ) {
                 setVolumes((prevVolumes) => ({
                     ...prevVolumes,
                     [selectedStream as string]: Math.max(
@@ -241,7 +260,10 @@ export const Room = ({
     );
 
     const handleVolumeChange = (event: Event, newValue: number | number[]) => {
-        if (selectedStream && !state.users.find(({id}) => id === selectedStream)?.you) {
+        if (
+            selectedStream &&
+            !(state.users.find(({you}) => you === true)?.id === selectedStream.toString())
+        ) {
             setVolumes((prevVolumes) => ({
                 ...prevVolumes,
                 [selectedStream as string]: newValue as number,
@@ -263,9 +285,16 @@ export const Room = ({
     };
 
     const handleStreamSelection = (streamId: string | typeof HostStream) => {
-        if (!state.users.find(({id}) => id === streamId)?.you) {
-            setSelectedStream(streamId);
+        if (
+            state.users.find(({you}) => you === true)?.you &&
+            selectedStream?.toString() === 'Symbol(mystream)'
+        ) {
+            setIsMuted((prevMuted) => ({
+                ...prevMuted,
+                [selectedStream as string]: true,
+            }));
         }
+        setSelectedStream(streamId);
     };
 
     return (
@@ -287,10 +316,9 @@ export const Room = ({
 
             {stream ? (
                 <video
-                    muted={isMuted[selectedStream as string] || false}
+                    muted={isMuted[selectedStream as string] || true}
                     ref={setVideoElement}
                     className={videoClasses()}
-                    data-stream-id={selectedStream}
                     onDoubleClick={handleFullscreen}
                 />
             ) : (
@@ -347,13 +375,39 @@ export const Room = ({
                             <PeopleIcon fontSize="large" />
                         </Badge>
                     </Tooltip>
+                    <Tooltip title="Fullscreen" arrow>
+                        <span>
+                            <IconButton
+                                onClick={() => handleFullscreen()}
+                                disabled={
+                                    selectedStream?.toString() === 'Symbol(mystream)' &&
+                                    state.users.find(({you}) => you === true)?.you
+                                }
+                                size="large"
+                            >
+                                <FullScreenIcon fontSize="large" />
+                            </IconButton>
+                        </span>
+                    </Tooltip>
+
+                    <Tooltip title="Settings" arrow>
+                        <span>
+                            <IconButton onClick={() => setOpen(true)} size="large">
+                                <SettingsIcon fontSize="large" />
+                            </IconButton>
+                        </span>
+                    </Tooltip>
+
                     <Tooltip title="Sound" arrow>
                         <span>
                             <IconButton
                                 onClick={() => {
                                     if (
                                         selectedStream &&
-                                        !state.users.find(({id}) => id === selectedStream)?.you
+                                        !(
+                                            state.users.find(({you}) => you === true)?.id ===
+                                            selectedStream.toString()
+                                        )
                                     ) {
                                         setIsMuted((prevMuted) => ({
                                             ...prevMuted,
@@ -363,11 +417,12 @@ export const Room = ({
                                     }
                                 }}
                                 disabled={
-                                    !selectedStream ||
-                                    state.users.find(({id}) => id === selectedStream)?.you
+                                    selectedStream?.toString() === 'Symbol(mystream)' &&
+                                    state.users.find(({you}) => you === true)?.you
                                 }
                             >
-                                {isMuted[selectedStream as string] ? (
+                                {isMuted[selectedStream as string] ||
+                                selectedStream?.toString() === 'Symbol(mystream)' ? (
                                     <VolumeMuteIcon fontSize="large" />
                                 ) : (
                                     <VolumeUpIcon fontSize="large" />
@@ -384,28 +439,13 @@ export const Room = ({
                                 step={1}
                                 min={0}
                                 max={100}
-                                disabled={state.users.find(({id}) => id === selectedStream)?.you}
+                                disabled={
+                                    selectedStream?.toString() === 'Symbol(mystream)' &&
+                                    state.users.find(({you}) => you === true)?.you
+                                }
                             />
+                            <span>{`volume: ${volumes[selectedStream as string] || 100}`}</span>
                         </div>
-                    </Tooltip>
-                    <Tooltip title="Fullscreen" arrow>
-                        <span>
-                            <IconButton
-                                onClick={() => handleFullscreen()}
-                                disabled={!selectedStream}
-                                size="large"
-                            >
-                                <FullScreenIcon fontSize="large" />
-                            </IconButton>
-                        </span>
-                    </Tooltip>
-
-                    <Tooltip title="Settings" arrow>
-                        <span>
-                            <IconButton onClick={() => setOpen(true)} size="large">
-                                <SettingsIcon fontSize="large" />
-                            </IconButton>
-                        </span>
                     </Tooltip>
                 </Paper>
             )}
@@ -440,7 +480,11 @@ export const Room = ({
                         );
                     })}
                 {state.hostStream && (
-                    <Paper elevation={4} className={classes.smallVideoContainer}>
+                    <Paper
+                        elevation={4}
+                        className={classes.smallVideoContainer}
+                        onClick={() => handleStreamSelection(HostStream)}
+                    >
                         <Video
                             src={state.hostStream}
                             className={classes.smallVideo}
@@ -585,7 +629,8 @@ const useStyles = makeStyles((theme: Theme) => ({
         overflow: 'auto',
     },
     volumeSlider: {
-        width: 150,
+        maxWidth: 'auto',
         marginLeft: 15,
+        marginRight: 15,
     },
 }));
