@@ -1,5 +1,5 @@
 import React, {useCallback} from 'react';
-import {Badge, IconButton, Paper, Theme, Tooltip, Typography} from '@mui/material';
+import {Badge, IconButton, Paper, Slider, Theme, Tooltip, Typography} from '@mui/material';
 import CancelPresentationIcon from '@mui/icons-material/CancelPresentation';
 import PresentToAllIcon from '@mui/icons-material/PresentToAll';
 import FullScreenIcon from '@mui/icons-material/Fullscreen';
@@ -73,6 +73,7 @@ export const Room = ({
     const [selectedStream, setSelectedStream] = React.useState<string | typeof HostStream>();
     const [videoElement, setVideoElement] = React.useState<FullScreenHTMLVideoElement | null>(null);
     const [isMuted, setIsMuted] = React.useState(true);
+    const [volume, setVolume] = React.useState(100);
 
     useShowOnMouseMovement(setShowControl);
 
@@ -102,8 +103,9 @@ export const Room = ({
             videoElement.srcObject = stream;
             videoElement.play().catch((e) => console.log('Could not play main video', e));
             videoElement.muted = isMuted;
+            videoElement.volume = volume / 100;
         }
-    }, [videoElement, stream, isMuted]);
+    }, [videoElement, stream, isMuted, volume]);
 
     const copyLink = () => {
         navigator?.clipboard?.writeText(window.location.href)?.then(
@@ -165,6 +167,43 @@ export const Room = ({
         },
         [state.clientStreams, selectedStream]
     );
+    useHotkeys(
+        'm',
+        () => {
+            setIsMuted(!isMuted);
+        },
+        [isMuted]
+    );
+    useHotkeys(
+        '+',
+        () => {
+            if (stream) {
+                setVolume((prevVolume) => Math.min(prevVolume + 10, 100));
+            }
+        },
+        [stream]
+    );
+    useHotkeys(
+        '-',
+        () => {
+            if (stream) {
+                setVolume((prevVolume) => Math.max(prevVolume - 10, 0));
+            }
+        },
+        [stream]
+    );
+    useHotkeys(
+        'ctrl+s',
+        () => {
+            setOpen(true);
+        },
+        []
+    );
+
+    const handleVolumeChange = (event: Event, newValue: number | number[]) => {
+        event.preventDefault();
+        setVolume(newValue as number);
+    };
 
     const videoClasses = () => {
         switch (settings.displayMode) {
@@ -266,6 +305,15 @@ export const Room = ({
                                 <VolumeUpIcon fontSize="large" />
                             )}
                         </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Volume" arrow>
+                        <div className={classes.volumeSlider}>
+                            <Slider
+                                value={volume}
+                                onChange={handleVolumeChange}
+                                aria-labelledby="continuous-slider"
+                            />
+                        </div>
                     </Tooltip>
                     <Tooltip title="Fullscreen" arrow>
                         <IconButton
@@ -458,5 +506,9 @@ const useStyles = makeStyles((theme: Theme) => ({
         height: '100%',
 
         overflow: 'auto',
+    },
+    volumeSlider: {
+        width: 150,
+        marginLeft: 15,
     },
 }));
